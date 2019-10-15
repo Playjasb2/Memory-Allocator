@@ -6,8 +6,11 @@ u_int64_t start = 0;
 
 /* Set *hi and *lo to the high and low order bits of the cycle counter.
  * Implementation requires assembly code to use the rdtsc instruction.
+ * NOTE: static keyword is required on inline function declaration to 
+ * tell compiler/linker that the function won't be used from any other 
+ * compilation unit.
  */
-inline void access_counter(unsigned *hi, unsigned *lo)
+static inline void access_counter(unsigned *hi, unsigned *lo)
 {
   asm volatile("rdtsc; movl %%edx, %0; movl %%eax, %1" /* Read cycle counter */
       : "=r" (*hi), "=r" (*lo)                /* and move results to */
