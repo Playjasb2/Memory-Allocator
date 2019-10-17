@@ -43,7 +43,7 @@ u_int64_t find_threshold()
     u_int64_t threshold = (u_int64_t) ((float) sum / (float) NUM_RUNS);
     printf("threshold = %lu\n", threshold);
 
-    return threshold - 1000;
+    return threshold;
 }
 
 u_int64_t inactive_periods(int num, u_int64_t threshold, u_int64_t* samples)
