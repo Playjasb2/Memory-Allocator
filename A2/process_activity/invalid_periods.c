@@ -43,7 +43,7 @@ u_int64_t find_threshold()
     u_int64_t threshold = (u_int64_t) ((float) sum / (float) NUM_RUNS);
     printf("threshold = %lu\n", threshold);
 
-    return threshold;
+    return threshold - 1000;
 }
 
 u_int64_t inactive_periods(int num, u_int64_t threshold, u_int64_t* samples)
@@ -95,9 +95,12 @@ double find_clock_speed()
         speed += (double) get_counter() / 50000000;
     }
 
-    speed = speed / ((float) NUM_RUNS) * 1000000000;
-    
-    printf("speed = %f\n", speed);
+    speed = speed / ((float) NUM_RUNS); // cycles per second
+    printf("speed (ghz) = %f\n", speed);
+
+    speed *= 1000000; // 1 million cycles per millisecond
+    printf("cycles per millisecond = %f\n", speed);
+
     return speed;
 }
 
@@ -145,6 +148,7 @@ int main(int argc, char* argv[])
 
                 printf("Active %u: start at %lu, duration %lu cycles (%f ms)\n", i, start, active_length, ((double) active_length) / clock_speed);
                 printf("Inactive %u: start at %lu, duration %lu cycles (%f ms)\n", i, inactive_start, inactive_length, ((double) inactive_length) / clock_speed);
+                printf("\n");
 
                 start = inactive_end;
             }
