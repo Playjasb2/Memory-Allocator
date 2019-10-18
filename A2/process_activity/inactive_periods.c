@@ -146,6 +146,8 @@ int main(int argc, char* argv[])
                 return -1;
             }
 
+            fprintf(f_out, "Active,Inactive\n");
+
             for(unsigned int i = 0; i < num_periods; i++)
             {
                 u_int64_t inactive_start = samples[i * 2 + 0];
