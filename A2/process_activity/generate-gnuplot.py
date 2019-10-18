@@ -1,49 +1,38 @@
-import sys
+def get_data():
+    
+    data = []
 
-def parse_data(data):
-    dataLines = data.split("\n")
+    with open("results.csv", 'r') as file:
+        for line in file:
+            if "Start" in line or "Finish" in line:
+                continue
 
+            dataLine = line.rstrip("\n")
+            dataLine = dataLine.split(",")
+            data.append((float(dataLine[0]),float(dataLine[1])))
+    
     activeData = []
     inactiveData = []
 
-    for dataLine in dataLines:
-        currentLineArray = dataLine.split()
-
-        if currentLineArray == [] or currentLineArray[0] not in ["Active", "Inactive"]:
-            continue
-
-        term = float(currentLineArray[-2][1:])
-        
-        if currentLineArray[0] == "Active":
-            activeData.append(term)
+    for i in range(len(data)):
+        if i % 2 == 0:
+            activeData.append(data[i])
         else:
-            inactiveData.append(term)
-    
+            inactiveData.append(data[i])
+
     return activeData, inactiveData
+
 
 
 
 if __name__ == "__main__":
 
-    data = sys.stdin.read()
+    activeData, inactiveData = get_data()
 
-    activeData, inactiveData = parse_data(data)
+    maxDuration = inactiveData[-1][1]
 
-    maxDuration = sum(activeData) + sum(inactiveData)
-
-    activeDataTimeStamps = []
-    inactiveDataTimeStamps = []
-
-    startingTime = activeData[0] + inactiveData[0]
-
-    for i in range(1,len(activeData)):
-        activeDataTimeStamps.append((startingTime, startingTime + activeData[i]))
-
-        startingTime += activeData[i]
-
-        inactiveDataTimeStamps.append((startingTime, startingTime + inactiveData[i]))
-
-        startingTime += inactiveData[i]
+    activeData = activeData[1:]
+    inactiveData = inactiveData[1:]
     
 
     file = open("test.gnuplot", 'w+')
@@ -56,16 +45,16 @@ if __name__ == "__main__":
 
     file.write("set key box\n")
 
-    for i in range(len(activeDataTimeStamps)):
+    for i in range(len(activeData)):
         command = "set object " + str(2*i+1) + " rect from "
-        command += str(activeDataTimeStamps[i][0]) + ", " + "1 "
-        command += " to " + str(activeDataTimeStamps[i][1]) + ", " + "2 "
+        command += str(activeData[i][0]) + ", " + "1 "
+        command += " to " + str(activeData[i][1]) + ", " + "2 "
         command += "fc rgb \"blue\" fs solid\n"
         file.write(command)
 
         command = "set object " + str(2*i+2) + " rect from "
-        command += str(inactiveDataTimeStamps[i][0]) + ", " + "1 "
-        command += "to " + str(inactiveDataTimeStamps[i][1]) + ", " + "2 "
+        command += str(inactiveData[i][0]) + ", " + "1 "
+        command += "to " + str(inactiveData[i][1]) + ", " + "2 "
         command += "fc rgb \"red\" fs solid\n"
         file.write(command)
 

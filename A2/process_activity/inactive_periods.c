@@ -146,7 +146,7 @@ int main(int argc, char* argv[])
                 return -1;
             }
 
-            fprintf(f_out, "Active,Inactive\n");
+            fprintf(f_out, "Start,Finish\n");
 
             for(unsigned int i = 0; i < num_periods; i++)
             {
