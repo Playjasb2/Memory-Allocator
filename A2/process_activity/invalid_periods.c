@@ -25,7 +25,7 @@ u_int64_t find_threshold()
         curr = get_counter();
 
         diff = curr - prev;
-        if((diff > 1000) && (diff < 10000))
+        if((diff > 1000) && (diff < 15000))
         {
             array[i++] = diff;
         }
@@ -41,8 +41,9 @@ u_int64_t find_threshold()
     }
 
     u_int64_t threshold = (u_int64_t) ((float) sum / (float) NUM_RUNS);
-    printf("threshold = %lu\n", threshold);
+    threshold = (float) threshold / 2.0f;
 
+    printf("threshold = %lu\n", threshold);
     return threshold;
 }
 
