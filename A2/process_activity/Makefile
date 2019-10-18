@@ -1,6 +1,6 @@
 
 all:
-	gcc invalid_periods.c tsc.c -o invalid_periods
+	gcc inactive_periods.c tsc.c -o inactive_periods
 
 run:
-	./invalid_periods 50
+	./inactive_periods 50
