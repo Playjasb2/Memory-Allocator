@@ -32,12 +32,12 @@ for cmp_file in cmp_files:
 
 # generate the plot file
 gp_out = open("plot.gp", "w")
-gp_out.write("set terminal postscript eps enhanced color solid colortext 9\n")
-gp_out.write("set output 'multiple_plots.eps'\n")
+gp_out.write("set terminal png\n")
+gp_out.write("set datafile separator \",\"\n")
+gp_out.write("set output 'results.png'\n")
 gp_out.write("plot 'data.txt' using 1:2 w lp title 'base', \\\n")
 
 for i in range(0, len(cmp_files)):
-    if i != len(cmp_files) - 1:
-    gp_out.write("'' using 1:3 w lp title '{}' \\\n".format(cmp_file_names[i]))
+    gp_out.write("'' using 1:{} w lp title '{}', \\\n".format(3 + i, cmp_file_names[i]))
 
 gp_out.close()
