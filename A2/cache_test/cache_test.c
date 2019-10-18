@@ -24,8 +24,10 @@ int main(int argc, char* argv[])
     unsigned int core = 0;
     unsigned int size_in_kb = 0;
 
+    FILE* output_file = NULL;
+
     int op = 0;
-    while((op = getopt(argc, argv, "c:k:")) != -1)
+    while((op = getopt(argc, argv, "c:k:f:")) != -1)
     {
         switch(op)
         {
@@ -40,13 +42,24 @@ int main(int argc, char* argv[])
                 size_in_kb = atoi(optarg);
                 break;
             }
+
+            case 'f':
+            {
+                output_file = fopen(optarg, "a");
+                break;
+            }
         }
     }
 
-    if((core == 0) || (size_in_kb == 0))
+    if(size_in_kb == 0)
     {
         printf("invalid or missing arguments\n");
         return -1;
+    }
+
+    if(output_file == NULL)
+    {
+        output_file = fopen("results.csv", "a");
     }
 
     srandom(time(NULL));
@@ -62,7 +75,7 @@ int main(int argc, char* argv[])
     const uint64_t size_in_bytes = size_in_kb * KB;
     uint64_t* array = (uint64_t*) malloc(size_in_bytes);
 
-    const unsigned int NUM_RUNS = 5;
+    const unsigned int NUM_RUNS = 10;
     unsigned int length = size_in_bytes / sizeof(uint64_t);
 
     double time = 0;
@@ -103,14 +116,13 @@ int main(int argc, char* argv[])
 
     time /= (double) NUM_RUNS;
 
-    FILE* output = fopen("results.csv", "a");
-    if(output == NULL)
+    if(output_file == NULL)
     {
         printf("IO failure\n");
         return -1;
     }
-    fprintf(output, "%u,%f\n", size_in_kb, BYTES_TO_GB(size_in_bytes) / time);
-    fclose(output);
+    fprintf(output_file, "%u,%f\n", size_in_kb, BYTES_TO_GB(size_in_bytes) / time);
+    fclose(output_file);
 
     free(array);
 
