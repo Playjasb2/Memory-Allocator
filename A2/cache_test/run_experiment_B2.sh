@@ -10,7 +10,15 @@ for ((c = 0 ; c < $num_cores ; c++ )); do
 
     echo "compare to ${c}"
 
-    ./cache_test -c $1 -k 1024 -f "base.csv"
+    # loop through kb
+    for ((i = 1 ; i <= 1024 ; i *= 2 )); do
+        ./cache_test -c $1 -k $i -f "base.csv" &
+    done
+
+    # loop through mb
+    for ((i = 1024 ; i <= 16 * 1024 ; i += 1024 )); do
+        ./cache_test -c $1 -k $i -f "base.csv" &
+    done
 
     # loop through kb
     for ((i = 1 ; i <= 1024 ; i *= 2 )); do
