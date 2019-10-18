@@ -165,6 +165,8 @@ int main(int argc, char* argv[])
 
                 start = inactive_end;
             }
+
+            free(samples);
         }
     }
 
