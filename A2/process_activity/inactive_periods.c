@@ -139,6 +139,13 @@ int main(int argc, char* argv[])
             u_int64_t* samples = (u_int64_t*) malloc(sizeof(u_int64_t) * num_periods * 2);
             u_int64_t start = inactive_periods(num_periods, threshold, samples);
             
+            FILE* f_out = fopen("results.csv", "w");
+            if(f_out == NULL)
+            {
+                printf("io error\n");
+                return -1;
+            }
+
             for(unsigned int i = 0; i < num_periods; i++)
             {
                 u_int64_t inactive_start = samples[i * 2 + 0];
@@ -150,6 +157,9 @@ int main(int argc, char* argv[])
                 printf("Active %u: start at %lu, duration %lu cycles (%f ms)\n", i, start, active_length, ((double) active_length) / clock_speed);
                 printf("Inactive %u: start at %lu, duration %lu cycles (%f ms)\n", i, inactive_start, inactive_length, ((double) inactive_length) / clock_speed);
                 printf("\n");
+
+                fprintf(f_out, "%lu,%lu\n", start, start + active_length);
+                fprintf(f_out, "%lu,%lu\n", inactive_start, inactive_start + inactive_length);
 
                 start = inactive_end;
             }
