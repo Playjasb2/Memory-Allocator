@@ -158,8 +158,8 @@ int main(int argc, char* argv[])
                 printf("Inactive %u: start at %lu, duration %lu cycles (%f ms)\n", i, inactive_start, inactive_length, ((double) inactive_length) / clock_speed);
                 printf("\n");
 
-                fprintf(f_out, "%lu,%lu\n", start, start + active_length);
-                fprintf(f_out, "%lu,%lu\n", inactive_start, inactive_start + inactive_length);
+                fprintf(f_out, "%f,%f\n", (double) start / clock_speed, (double) (start + active_length) / clock_speed);
+                fprintf(f_out, "%f,%f\n", (double) inactive_start / clock_speed, (double) (inactive_start + inactive_length) / clock_speed);
 
                 start = inactive_end;
             }
