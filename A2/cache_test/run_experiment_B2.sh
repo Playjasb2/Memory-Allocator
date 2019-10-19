@@ -1,8 +1,7 @@
 
-rm -f *.csv
+make clear
 
 num_cores=$(nproc)
-
 
 # perform the base calculations
 # loop through kb
@@ -26,9 +25,9 @@ for ((c = 0 ; c < $num_cores ; c++ )); do
     # loop through kb
     for ((i = 1 ; i <= 1024 ; i *= 2 )); do
         echo "core ${c} size ${i}"
-        ./cache_test -c $c -k $i &
-        P1=$!
         ./cache_test -c $1 -k $i -f "cmp_${c}.csv" &
+        P1=$!
+        ./cache_test -c $c -k $i &
         P2=$!
         wait $P1 $P2
     done
@@ -36,11 +35,14 @@ for ((c = 0 ; c < $num_cores ; c++ )); do
     # loop through mb
     for ((i = 1024 ; i <= 16 * 1024 ; i += 1024 )); do
         echo "core ${c} size ${i}"
-        ./cache_test -c $c -k $i &
-        P1=$!
         ./cache_test -c $1 -k $i -f "cmp_${c}.csv" &
+        P1=$!
+        ./cache_test -c $c -k $i &
         P2=$!
         wait $P1 $P2
     done
-
 done
+
+python merge_results.py
+gnuplot graph_kb.gp
+gnuplot graph_mb.gp

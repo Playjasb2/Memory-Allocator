@@ -2,5 +2,7 @@
 all:
 	gcc cache_test.c -o cache_test
 
-clean:
-	rm results.csv
+clear:
+	rm -f *.csv
+	rm -f *.gp
+	rm -f *.png

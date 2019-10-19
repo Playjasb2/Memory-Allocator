@@ -108,14 +108,20 @@ double find_clock_speed()
 int main(int argc, char* argv[])
 {
     srandom(time(NULL));
+    
 	cpu_set_t set;
 	CPU_ZERO(&set);
-	CPU_SET((random() ?: 1) % get_nprocs(), &set);
+    int core = (random() ?: 1) % get_nprocs();
+	CPU_SET(core, &set);
 	if (sched_setaffinity(getpid(), sizeof(set), &set) != 0)
     {
 	    printf("failed to assign cpu core\n");
 		return -1;
 	}
+    else
+    {
+        printf("running on cpu core %i\n", core);
+    }
 
     if(argc != 2)
     {
