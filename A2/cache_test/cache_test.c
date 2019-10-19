@@ -11,6 +11,8 @@
 #include <unistd.h>
 #include <stdint.h>
 
+#define NUMBER_OF_RUNS 30
+
 int main(int argc, char* argv[])
 {
     unsigned int core = 0;
@@ -67,27 +69,26 @@ int main(int argc, char* argv[])
     const uint64_t size_in_bytes = size_in_kb * 1024;
     uint64_t* array = (uint64_t*) malloc(size_in_bytes);
 
-    const unsigned int NUM_RUNS = 30;
-    unsigned int length = size_in_bytes / sizeof(uint64_t);
+    unsigned int array_len = size_in_bytes / sizeof(uint64_t);
 
-    double time = 0;
-    struct timespec start = {};
-    struct timespec end = {};
-
-    for(unsigned int run = 0; run < NUM_RUNS; run++)
+    double average_time = 0;
+    for(unsigned int r = 0; r < NUMBER_OF_RUNS; r++)
     {
         // make sure the array is in the L1 cache and TLB
-        for(int i = length - 1; i >= 0; i--)
+        for(int i = array_len - 1; i >= 0; i--)
         {
             array[i] = 0;
         }
         
+        struct timespec start = {};
+        struct timespec end   = {};
+
         clock_gettime(CLOCK_MONOTONIC, &start);
 
         // these loops are designed to skip 16 integers at a time in order avoid linear accesses and to skip over cache lines bought in by the prefetcher
         for(unsigned int i = 0; i < 16; i++)
         {
-            for(unsigned int j = i; j < length; j += 16)
+            for(unsigned int j = i; j < array_len; j += 16)
             {
                 array[j] = j;
             }
@@ -103,20 +104,19 @@ int main(int argc, char* argv[])
             nanoseconds += 1000000000;
         }
 
-        time += seconds + nanoseconds / 1000000000.0;
+        average_time += seconds + nanoseconds / 1000000000.0;
     }
 
-    time /= (double) NUM_RUNS;
+    average_time /= (double) NUMBER_OF_RUNS;
 
     if(output_file == NULL)
     {
-        printf("IO failure\n");
+        printf("io failure\n");
         return -1;
     }
-    fprintf(output_file, "%u,%f\n", size_in_kb, ((double) size_in_bytes / (1024.0f * 1024.0f * 1024.0f)) / time);
+    fprintf(output_file, "%u,%f\n", size_in_kb, ((double) size_in_bytes / (1024.0f * 1024.0f * 1024.0f)) / average_time);
     fclose(output_file);
 
     free(array);
-
     return 0;
 }
