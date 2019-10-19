@@ -53,5 +53,5 @@ def write_gp_file(f_name, f_input, f_output, title, x_label, y_label):
 
     gp_out.close()
 
-write_gp_file("graph_kb.gp", "data_kb.csv", "results_kb.png", "Shared Cache Measurement (KB)", "Blocksize (KB)", "Miss Rate (%)")
-write_gp_file("graph_mb.gp", "data_mb.csv", "results_mb.png", "Shared Cache Measurement (MB)", "Blocksize (MB)", "Miss Rate (%)")
+write_gp_file("graph_kb.gp", "data_kb.csv", "shared_cache_kb.png", "Shared Cache Measurement (KB)", "Blocksize (KB)", "Miss Rate (%)")
+write_gp_file("graph_mb.gp", "data_mb.csv", "shared_cache_mb.png", "Shared Cache Measurement (MB)", "Blocksize (MB)", "Miss Rate (%)")
