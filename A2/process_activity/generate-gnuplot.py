@@ -35,10 +35,10 @@ if __name__ == "__main__":
     inactiveData = inactiveData[1:]
     
 
-    file = open("test.gnuplot", 'w+')
+    file = open("results.gnuplot", 'w+')
     
     file.write("set terminal png\n")
-    file.write("set output \"test.png\"\n")
+    file.write("set output \"results.png\"\n")
     file.write("set title \"Active and Inactive Periods\"\n")
     file.write("set xlabel \"Time (ms)\"\n")
     file.write("unset ytics\n")
