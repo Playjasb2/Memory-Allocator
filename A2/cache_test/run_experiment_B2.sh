@@ -1,5 +1,11 @@
 
-make clear
+if [ "$#" -ne 1 ]; then
+    echo "correct usage: ./run_experiment_B2.sh <core number>"
+    exit 1
+fi
+
+make clean
+make
 
 num_cores=$(nproc)
 

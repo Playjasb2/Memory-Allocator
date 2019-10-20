@@ -1,5 +1,6 @@
 
-make clear
+make clean
+make
 
 # loop through kb
 for ((i = 4 ; i <= 1024 ; i += 4 )); do
