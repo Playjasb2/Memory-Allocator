@@ -10,7 +10,7 @@ for ((i = 256 ; i <= 1024 ; i += 16 )); do
 done
 
 # loop through mb
-for ((i = 1024 ; i <= 16 * 1024 ; i += 512 )); do
+for ((i = 1024 ; i <= 32 * 1024 ; i += 512 )); do
     echo "block size = ${i} mb"
     echo -n "$i," >> miss_rate_mb.csv
     perf stat -e cache-misses,cache-references ./cache_test -c 1 -k $i 2>&1 | grep 'cache-misses' | awk '{print $4;}' >> miss_rate_mb.csv
