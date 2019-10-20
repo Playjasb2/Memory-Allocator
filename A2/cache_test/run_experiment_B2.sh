@@ -18,7 +18,7 @@ done
 
 # then compare to each other core
 # loop through mb
-for ((i = 1024 ; i <= 16 * 1024 ; i += 1024 )); do
+for ((i = 1024 ; i <= 32 * 1024 ; i += 1024 )); do
     echo -n "$i," >> "base.csv"
     perf stat -e cache-misses,cache-references ./cache_test -c $1 -k $i 2>&1 | grep 'cache-misses' | awk '{print $4;}' >> "base.csv"
 done
@@ -42,7 +42,7 @@ for ((c = 0 ; c < $num_cores ; c++ )); do
     done
 
     # loop through mb
-    for ((i = 1024 ; i <= 16 * 1024 ; i += 1024 )); do
+    for ((i = 1024 ; i <= 32 * 1024 ; i += 1024 )); do
         echo "core ${c} size ${i}"
         echo -n "$i," >> "cmp_${c}.csv"
         perf stat -e cache-misses,cache-references ./cache_test -c $1 -k $i 2>&1 | grep 'cache-misses' | awk '{print $4;}' >> "cmp_${c}.csv" &
