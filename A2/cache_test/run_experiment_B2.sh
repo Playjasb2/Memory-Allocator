@@ -11,7 +11,7 @@ num_cores=$(nproc)
 
 # perform the base calculations
 # loop through kb
-for ((i = 1 ; i < 1024 ; i *= 2 )); do
+for ((i = 256 ; i < 1024 ; i += 32 )); do
     echo -n "$i," >> "base.csv"
     perf stat -e cache-misses,cache-references ./cache_test -c $1 -k $i 2>&1 | grep 'cache-misses' | awk '{print $4;}' >> "base.csv"
 done
@@ -31,7 +31,7 @@ for ((c = 0 ; c < $num_cores ; c++ )); do
     echo "compare to ${c}"
 
     # loop through kb
-    for ((i = 1 ; i <= 1024 ; i *= 2 )); do
+    for ((i = 256 ; i <= 1024 ; i += 32 )); do
         echo "core ${c} size ${i}"
         echo -n "$i," >> "cmp_${c}.csv"
         perf stat -e cache-misses,cache-references ./cache_test -c $1 -k $i 2>&1 | grep 'cache-misses' | awk '{print $4;}' >> "cmp_${c}.csv" &

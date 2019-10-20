@@ -11,8 +11,6 @@
 #include <unistd.h>
 #include <stdint.h>
 
-#define NUMBER_OF_RUNS 30
-
 int main(int argc, char* argv[])
 {
     unsigned int core = 0;
@@ -58,12 +56,13 @@ int main(int argc, char* argv[])
     uint64_t* array = (uint64_t*) malloc(size_in_bytes);
     unsigned int array_len = size_in_bytes / sizeof(uint64_t);
 
-    for(int i = array_len - 1; i >= 0; i--)
+    for(unsigned int i = 0; i < array_len; i++)
     {
         array[i] = 0;
     }
 
-    for(unsigned int r = 0; r < NUMBER_OF_RUNS; r++)
+    const unsigned int NUM_RUNS = 30;
+    for(unsigned int r = 0; r < NUM_RUNS; r++)
     {
         // these loops are designed to skip 32 integers (2 cache lines) at a time to nullify prefetcher
         for(unsigned int i = 0; i < 16; i++)
