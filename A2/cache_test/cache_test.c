@@ -64,7 +64,7 @@ int main(int argc, char* argv[])
     const unsigned int NUM_RUNS = 30;
     for(unsigned int r = 0; r < NUM_RUNS; r++)
     {
-        // these loops are designed to skip 32 integers (2 cache lines) at a time to nullify prefetcher
+        // these loops are designed to skip 16 integers (1 cache line) at a time to nullify prefetcher
         for(unsigned int i = 0; i < 16; i++)
         {
             for(unsigned int j = i; j < array_len; j += 16)
