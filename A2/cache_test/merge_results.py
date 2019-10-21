@@ -38,7 +38,7 @@ for cmp_file in cmp_files:
     cmp_file.close()
 
 # generate the plot file
-def write_gp_file(f_name, f_input, f_output, title, x_label, y_label):
+def write_gp_file(f_name, f_input, f_output, title, x_label, y_label, x_start, x_end, x_offset, x_stride, legend_outside):
     gp_out = open(f_name, "w")
     gp_out.write("set terminal png\n")
     gp_out.write("set datafile separator \",\"\n")
@@ -46,6 +46,11 @@ def write_gp_file(f_name, f_input, f_output, title, x_label, y_label):
     gp_out.write("set title '{}'\n".format(title))
     gp_out.write("set xlabel '{}'\n".format(x_label))
     gp_out.write("set ylabel '{}'\n".format(y_label))
+    if legend_outside:
+        gp_out.write("set key outside\n")
+    gp_out.write("set xtics rotate\n")
+    gp_out.write("set xrange [{}:{}]\n".format(x_start, x_end))
+    gp_out.write("set xtics {},{}\n".format(x_offset, x_stride))
     gp_out.write("plot '{}' using 1:2 w lp title 'base', \\\n".format(f_input))
 
     for i in range(0, len(cmp_files)):
@@ -53,5 +58,5 @@ def write_gp_file(f_name, f_input, f_output, title, x_label, y_label):
 
     gp_out.close()
 
-write_gp_file("graph_kb.gp", "data_kb.csv", "shared_cache_kb.png", "Shared Cache Measurement (KB)", "Blocksize (KB)", "Miss Rate (%)")
-write_gp_file("graph_mb.gp", "data_mb.csv", "shared_cache_mb.png", "Shared Cache Measurement (MB)", "Blocksize (MB)", "Miss Rate (%)")
+write_gp_file("graph_kb.gp", "data_kb.csv", "shared_cache_kb.png", "Shared Cache Measurement (KB)", "Blocksize (KB)", "Miss Rate (%)", 256, 1024, 256, 64, False)
+write_gp_file("graph_mb.gp", "data_mb.csv", "shared_cache_mb.png", "Shared Cache Measurement (MB)", "Blocksize (KB)", "Miss Rate (%)", 1024, 32 * 1024, 2048, 2018, True)
