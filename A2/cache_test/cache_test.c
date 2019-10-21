@@ -41,6 +41,7 @@ int main(int argc, char* argv[])
         return -1;
     }
 
+    // pin the cpu to the requested core
     srandom(time(NULL));
 	cpu_set_t set;
 	CPU_ZERO(&set);
@@ -56,12 +57,13 @@ int main(int argc, char* argv[])
     uint64_t* array = (uint64_t*) malloc(size_in_bytes);
     unsigned int array_len = size_in_bytes / sizeof(uint64_t);
 
+    // warm up the array (populate page tables and place elements in cache if possible)
     for(unsigned int i = 0; i < array_len; i++)
     {
         array[i] = 0;
     }
 
-    const unsigned int NUM_RUNS = 30;
+    const unsigned int NUM_RUNS = 30; // 30 trials
     for(unsigned int r = 0; r < NUM_RUNS; r++)
     {
         // these loops are designed to skip 16 integers (1 cache line) at a time to nullify prefetcher

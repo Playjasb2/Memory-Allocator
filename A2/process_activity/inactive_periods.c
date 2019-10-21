@@ -14,7 +14,7 @@
 
 u_int64_t find_threshold()
 {
-    const unsigned int NUM_RUNS = 50;
+    const unsigned int NUM_RUNS = 50; // 50 trials to find the threshold
 
     u_int64_t array[NUM_RUNS];
     u_int64_t curr = 0, prev = 0, diff = 0;
@@ -25,6 +25,9 @@ u_int64_t find_threshold()
         curr = get_counter();
 
         diff = curr - prev;
+        // diff must be > 1000 to filter out TLB/cache misses
+        // but it must also be < 15000 to filter out context switches
+        // hence a timer interrupt must be between 1000 and 15000 cycles
         if((diff > 1000) && (diff < 15000))
         {
             array[i++] = diff;
@@ -40,8 +43,9 @@ u_int64_t find_threshold()
         sum += array[i];
     }
 
+    // a reasonable threshold is the average number of cycles to process
     u_int64_t threshold = (u_int64_t) ((float) sum / (float) NUM_RUNS);
-    threshold = (float) threshold / 2.0f;
+    threshold = (float) threshold / 2.0f; // divide by 2 because the average itself could miss timer interrupts which are processed faster than average
 
     printf("threshold = %lu\n", threshold);
     return threshold;
@@ -52,8 +56,8 @@ u_int64_t inactive_periods(int num, u_int64_t threshold, u_int64_t* samples)
     start_counter();
     u_int64_t start_time = get_counter();
 
-    u_int64_t curr = 0, prev = 0, diff = 0;
-    u_int64_t active_end = start_time;
+    u_int64_t curr = 0, prev = 0, diff = 0; // temporary variables
+    u_int64_t active_end = start_time; // tracker variable to track the end of an active period
 
     for(u_int64_t periods_inactive = 0; periods_inactive < num;)
     {
@@ -83,6 +87,7 @@ double find_clock_speed()
 {
     const unsigned int NUM_RUNS = 5;
 
+    // sleep for a reasonably short period of time to avoid interrupt and context switch interference
     struct timespec duration;
     duration.tv_sec = 0;
     duration.tv_nsec = 50000000; // 0.05 of a second
@@ -109,6 +114,7 @@ int main(int argc, char* argv[])
 {
     srandom(time(NULL));
     
+    // pin this program to a random (preferably non-zero) core
 	cpu_set_t set;
 	CPU_ZERO(&set);
     int core = (random() ?: 1) % get_nprocs();
