@@ -1,7 +1,7 @@
 #include <stdlib.h>
 #include "memlib.h"
 
-#define PAGES_IN_SUPERBLOCK 2
+#define DEFAULT_PAGES_IN_SUPERBLOCK 2
 
 #define NUM_BLOCK_SIZES 10
 const int BLOCK_SIZES[NUM_BLOCK_SIZES] = { 16, 32, 64, 128, 256, 512, 1024, 2048, 4096, 6144 };
@@ -30,14 +30,12 @@ struct processor_heap
 
 struct allocation_header
 {
+	unsigned int num_pages;
 	unsigned int size;
 	unsigned int padding;
 };
 
 void* page_zero; // page dedicated for heap data
-
-unsigned int superblock_size;
-unsigned int num_processors;
 
 pthread_mutex_t global_heap_lock = PTHREAD_MUTEX_INITIALIZER;
 
@@ -45,8 +43,7 @@ processor_heap *processor_heaps;
 
 void initialize()
 {
-	num_processors = getNumProcessors();
-	superblock_size = PAGES_IN_SUPERBLOCK * mem_pagesize();
+	unsigned int num_processors = getNumProcessors();
 
 	page_zero = mem_sbrk(mem_pagesize());
 	processor_heaps = (processor_heap*) page_zero;
@@ -72,13 +69,14 @@ unsigned int calculate_size_class(size_t sz)
 	return size_class;
 }
 
-void* alloc_superblock()
+void* alloc_superblock(unsigned int num_pages)
 {
 	pthread_mutex_lock(&global_heap_lock);
 
-	superblock* block = (superblock*) mem_sbrk(PAGES_IN_SUPERBLOCK * mem_pagesize());
+	superblock* block = (superblock*) mem_sbrk(num_pages * mem_pagesize());
 	if(block != NULL)
 	{
+		block->num_pages = num_pages;
 		block->size = sizeof(superblock);
 		block->next = NULL;
 	}
@@ -92,6 +90,8 @@ void* alloc_small_block(size_t sz)
 	void* mem = NULL;
 	processor_heap* heap = processor_heaps[getTID()];
 	pthread_mutex_lock(&heap->lock);
+
+	unsigned int page_size = mem_pagesize();
 
 	unsigned int size_class = calculate_size_class(sz);
 	unsigned int size = BLOCK_SIZES[size_class];
@@ -109,7 +109,7 @@ void* alloc_small_block(size_t sz)
 		superblock *block = NULL, *tail = NULL;
 		for(block = heap->allocations; block != NULL; block = block->next)
 		{
-			if(superblock_size - block->size >= size)
+			if(size + block->size <= block->num_pages * page_size)
 			{
 				break;
 			}
@@ -119,7 +119,7 @@ void* alloc_small_block(size_t sz)
 		// allocate a new superblock and insert it into this heap
 		if(block == NULL)
 		{
-			block = alloc_superblock();
+			block = alloc_superblock(DEFAULT_PAGES_IN_SUPERBLOCK);
 			tail->next = block;
 		}
 
@@ -142,6 +142,30 @@ void* alloc_large_block(size_t sz)
 	void* mem = NULL;
 	processor_heap* heap = processor_heaps[getTID()];
 	pthread_mutex_lock(&heap->lock);
+
+	unsigned long long page_size = mem_pagesize();
+	unsigned long long mask = page_size - 1;
+	unsigned long long num_pages = ((sz + mask) & ~mask) / page_size;
+	superblock* block = alloc_superblock(num_pages);
+
+	if(heap->allocations == NULL)
+	{
+		heap->allocations = block;
+	}
+	else
+	{
+		superblock* it = heap->allocations;
+		while(1)
+		{
+			if(it->next == NULL)
+			{
+				it->next = block;
+				break;
+			}
+
+			it = it->next;
+		}
+	}
 	
 	pthread_mutex_unlock(&heap->lock);
 	return mem;
