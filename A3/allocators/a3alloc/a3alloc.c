@@ -1,5 +1,10 @@
+
 #include <stdlib.h>
+
+#include <pthread.h>
+
 #include "memlib.h"
+#include "mm_thread.h"
 
 #define PAGES_IN_SUPERBLOCK 2
 
@@ -9,27 +14,35 @@ const int BLOCK_SIZES[NUM_BLOCK_SIZES] = { 16, 32, 64, 128, 256, 512, 1024, 2048
 
 typedef ptrdiff_t vaddr_t;
 
-struct superblock
+// forward declare the main structures since they reference each other
+typedef struct superblock_t superblock;
+typedef struct free_block_t free_block;
+typedef struct free_pages_t free_pages;
+typedef struct processor_heap_t processor_heap;
+typedef struct subpage_allocation_t subpage_allocation;
+typedef struct large_allocation_t large_allocation;
+
+struct superblock_t
 {
 	processor_heap* owner;
 	unsigned int size_in_bytes;
 	superblock* next;
 };
 
-struct free_block
+struct free_block_t
 {
 	superblock* owner;
 	free_block* next;
 };
 
-struct free_pages
+struct free_pages_t
 {
 	unsigned int num_pages;
 	free_pages* prev;
 	free_pages* next;
 };
 
-struct processor_heap
+struct processor_heap_t
 {
 	pthread_mutex_t lock;
 
@@ -40,17 +53,16 @@ struct processor_heap
 	free_block* free_block_list[NUM_BLOCK_SIZES];
 };
 
-struct subpage_allocation
+struct subpage_allocation_t
 {
-	unsigned int size_in_bytes;
-	unsigned int padding;
 	superblock* owner;
+	unsigned long long size_in_bytes;
 };
 
-struct large_allocation
+struct large_allocation_t
 {
-	unsigned int size_in_pages;
 	large_allocation* next;
+	unsigned long long size_in_bytes;
 };
 
 void* page_zero; // page dedicated for heap data
@@ -73,7 +85,7 @@ void initialize()
 	for(unsigned int i = 0; i < num_processors; i++)
 	{
 		memset(&processor_heaps[i], 0, sizeof(processor_heap));
-		processor_heaps[i].lock = PTHREAD_MUTEX_INITIALIZER;
+		pthread_mutex_init(&processor_heaps[i].lock, NULL);
 	}
 }
 
@@ -98,22 +110,22 @@ void* alloc_pages(processor_heap* heap, unsigned int num_pages)
 	// try to find a page available for reuse
 	for(free_pages* pages = heap->free_page_list; pages != NULL; pages = pages->next)
 	{
-		if(pages->num_pages > num_pages)
+		if(pages->num_pages > num_pages) // take some of the pages in a free page list
 		{
 			page = pages;
 			pages->num_pages -= num_pages;
 
 			unsigned int offset = mem_pagesize() * num_pages;
 			if(pages->next != NULL) {
-				pages->next->prev += offset;
+				pages->next->prev += offset; // adjust the next free page list pointer to point to the correct pages
 			}
 			memcpy(pages, (unsigned char*) pages + offset, sizeof(free_pages));
 		}
-		else if(pages->num_pages == num_pages)
+		else if(pages->num_pages == num_pages) // take all of the pages in a free page list
 		{
 			page = pages;
 
-			if(pages == heap->free_page_list)
+			if(pages == heap->free_page_list) // remove the free page list from the head of the list
 			{
 				free_pages* next = heap->free_page_list->next;
 				if(next != NULL) {
@@ -121,7 +133,7 @@ void* alloc_pages(processor_heap* heap, unsigned int num_pages)
 				}
 				heap->free_page_list = next;
 			}
-			else
+			else // remove the free page list from inside the list
 			{
 				if(pages->prev != NULL) { pages->prev = pages->next; }
 				if(pages->next != NULL) { pages->next = pages->prev; }
@@ -137,7 +149,7 @@ void* alloc_pages(processor_heap* heap, unsigned int num_pages)
 		superblock* block = (superblock*) mem_sbrk(num_pages * mem_pagesize());
 		if(block != NULL)
 		{
-			block->size = sizeof(superblock);
+			block->size_in_bytes = sizeof(superblock);
 			block->next = NULL;
 
 			page = block;
@@ -152,28 +164,31 @@ void* alloc_pages(processor_heap* heap, unsigned int num_pages)
 void* alloc_small_block(size_t sz)
 {
 	void* mem = NULL;
-	processor_heap* heap = processor_heaps[getTID()];
+	superblock* owner = NULL;
+	
+	processor_heap* heap = &processor_heaps[getTID()];
 	pthread_mutex_lock(&heap->lock);
-
-	unsigned int page_size = mem_pagesize();
 
 	unsigned int size_class = calculate_size_class(sz);
 	unsigned int size = BLOCK_SIZES[size_class];
 
 	// check if there are any blocks of the size class which are available for reuse
-	if(heap->free_blocks[size_class] != NULL)
+	if(heap->free_block_list[size_class] != NULL)
 	{
-		mem = heap->free_blocks[size_class];
-		heap->free_blocks = heap->free_blocks->next;
+		free_block* block = heap->free_block_list[size_class];
+		heap->free_block_list[size_class] = heap->free_block_list[size_class]->next;
+
+		mem = block;
+		owner = block->owner;
 	}
 
 	if(mem == NULL)
 	{
-		// try to find a superblock to place the allocation in
+		// try to find a superblock with space to place the allocation in
 		superblock *block = NULL, *tail = NULL;
-		for(block = heap->allocations; block != NULL; block = block->next)
+		for(block = heap->subpage_allocations; block != NULL; block = block->next)
 		{
-			if(size + block->size <= block->num_pages * page_size)
+			if(size + block->size_in_bytes <= superblock_size)
 			{
 				break;
 			}
@@ -187,14 +202,16 @@ void* alloc_small_block(size_t sz)
 			tail->next = block;
 		}
 
-		mem = (unsigned char*) block + block->size;
-		block->size += size;
+		owner = block;
+		mem = (unsigned char*) block + block->size_in_bytes;
+		block->size_in_bytes += size;
 	}
 
 	if(mem != NULL)
 	{
-		allocation_header* header = (allocation_header*) mem;
-		header->size = size;
+		subpage_allocation* header = (subpage_allocation*) mem;
+		header->owner = owner;
+		header->size_in_bytes = size;
 	}
 
 	pthread_mutex_unlock(&heap->lock);
@@ -210,26 +227,32 @@ unsigned long long align(unsigned long long value, unsigned long long alignment)
 void* alloc_large_block(size_t sz)
 {
 	void* mem = NULL;
-	processor_heap* heap = processor_heaps[getTID()];
+	processor_heap* heap = &processor_heaps[getTID()];
 	pthread_mutex_lock(&heap->lock);
 
+	unsigned long long page_size = mem_pagesize();
 	unsigned long long size_aligned_to_qwords = align(sz, 8);
-	unsigned long long num_pages = align(size_aligned_to_qwords, page_size) / page_size;
-	superblock* block = alloc_pages(heap, num_pages);
-	mem = block;
+	unsigned long long size_aligned_to_pages = align(size_aligned_to_qwords, page_size);
+	unsigned long long num_pages = size_aligned_to_pages / page_size;
+	
+	large_allocation* allocation = alloc_pages(heap, num_pages);
+	allocation->size_in_bytes = size_aligned_to_pages;
+	allocation->next = NULL;
 
-	if(heap->allocations == NULL)
+	mem = allocation;
+
+	if(heap->large_allocations == NULL)
 	{
-		heap->allocations = block;
+		heap->large_allocations = allocation;
 	}
 	else
 	{
-		superblock* it = heap->allocations;
+		large_allocation* it = heap->large_allocations;
 		while(1)
 		{
 			if(it->next == NULL)
 			{
-				it->next = block;
+				it->next = allocation;
 				break;
 			}
 
@@ -243,16 +266,16 @@ void* alloc_large_block(size_t sz)
 
 int free_small_block(subpage_allocation* ptr)
 {
-	processor_heap* heap = processor_heaps[getTID()];
+	processor_heap* heap = &processor_heaps[getTID()];
 	pthread_mutex_lock(&heap->lock);
 
 	superblock* owner = ptr->owner;
 	unsigned int size_class = calculate_size_class(ptr->size_in_bytes);
 
-	free_block* block = (free_block* ptr);
+	free_block* block = (free_block*) ptr;
 	block->owner = owner;
-	block->next = heap->free_blocks[size_class];
-	heap->free_blocks[size_class] = block;
+	block->next = heap->free_block_list[size_class];
+	heap->free_block_list[size_class] = block;
 	
 	pthread_mutex_unlock(&heap->lock);
 	return 0;
@@ -260,16 +283,15 @@ int free_small_block(subpage_allocation* ptr)
 
 int free_large_block(large_allocation* ptr)
 {
-	processor_heap* heap = processor_heaps[getTID()];
+	processor_heap* heap = &processor_heaps[getTID()];
 	pthread_mutex_lock(&heap->lock);
 
-	superblock* owner = ptr->owner;
-	unsigned int num_pages = ptr->size_in_pages;
+	unsigned int num_pages = ptr->size_in_bytes / mem_pagesize();
 
 	free_pages* pages = (free_pages*) ptr;
 	pages->num_pages = num_pages;
-	pages->next = heap->free_pages;
-	heap->free_blocks = pages = next;
+	pages->next = heap->free_page_list;
+	heap->free_page_list = pages;
 
 	pthread_mutex_unlock(&heap->lock);
 	return 0;
@@ -278,7 +300,7 @@ int free_large_block(large_allocation* ptr)
 void *mm_malloc(size_t sz)
 {
 	void* mem = NULL;
-	size_t size = sz + sizeof(allocation_header);
+	size_t size = sz + sizeof(subpage_allocation);
 
 	if(size > MAX_BLOCK_SIZE)
 	{
@@ -289,20 +311,20 @@ void *mm_malloc(size_t sz)
 		mem = alloc_large_block(size);
 	}
 
-	return (unsigned char*) mem + sizeof(allocation_header);
+	return (unsigned char*) mem + sizeof(subpage_allocation);
 }
 
 void mm_free(void *ptr)
 {
-	allocation_header* mem = (unsigned char*) ptr - sizeof(allocation_header);
+	unsigned long long size = *((unsigned long long*) ptr - 1);
 
 	if(size > MAX_BLOCK_SIZE)
 	{
-		free_small_block(mem);
+		free_small_block(ptr);
 	}
 	else
 	{
-		free_large_block(mem);
+		free_large_block(ptr);
 	}
 }
 
