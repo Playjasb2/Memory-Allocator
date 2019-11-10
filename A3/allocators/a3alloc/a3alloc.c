@@ -11,6 +11,7 @@ typedef ptrdiff_t vaddr_t;
 
 struct superblock
 {
+	unsigned int num_pages;
 	unsigned int size;
 	superblock* next;
 };
@@ -30,7 +31,6 @@ struct processor_heap
 
 struct allocation_header
 {
-	unsigned int num_pages;
 	unsigned int size;
 	unsigned int padding;
 };
