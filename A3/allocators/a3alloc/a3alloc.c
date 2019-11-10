@@ -11,27 +11,46 @@ typedef ptrdiff_t vaddr_t;
 
 struct superblock
 {
-	unsigned int size;
+	processor_heap* owner;
+	unsigned int size_in_bytes;
 	superblock* next;
 };
 
 struct free_block
 {
+	superblock* owner;
 	free_block* next;
+};
+
+struct free_pages
+{
+	unsigned int num_pages;
+	free_pages* prev;
+	free_pages* next;
 };
 
 struct processor_heap
 {
 	pthread_mutex_t lock;
 
-	superblock* allocations;
-	free_block* free_blocks[NUM_BLOCK_SIZES];
+	superblock* subpage_allocations;
+	large_allocation* large_allocations;
+	
+	free_pages* free_page_list;
+	free_block* free_block_list[NUM_BLOCK_SIZES];
 };
 
-struct allocation_header
+struct subpage_allocation
 {
-	unsigned int size;
+	unsigned int size_in_bytes;
 	unsigned int padding;
+	superblock* owner;
+};
+
+struct large_allocation
+{
+	unsigned int size_in_pages;
+	large_allocation* next;
 };
 
 void* page_zero; // page dedicated for heap data
@@ -72,19 +91,62 @@ unsigned int calculate_size_class(size_t sz)
 	return size_class;
 }
 
-void* alloc_superblock()
+void* alloc_pages(processor_heap* heap, unsigned int num_pages)
 {
-	pthread_mutex_lock(&global_heap_lock);
+	void* page = NULL;
 
-	superblock* block = (superblock*) mem_sbrk(PAGES_IN_SUPERBLOCK * mem_pagesize());
-	if(block != NULL)
+	// try to find a page available for reuse
+	for(free_pages* pages = heap->free_page_list; pages != NULL; pages = pages->next)
 	{
-		block->size = sizeof(superblock);
-		block->next = NULL;
+		if(pages->num_pages > num_pages)
+		{
+			page = pages;
+			pages->num_pages -= num_pages;
+
+			unsigned int offset = mem_pagesize() * num_pages;
+			if(pages->next != NULL) {
+				pages->next->prev += offset;
+			}
+			memcpy(pages, (unsigned char*) pages + offset, sizeof(free_pages));
+		}
+		else if(pages->num_pages == num_pages)
+		{
+			page = pages;
+
+			if(pages == heap->free_page_list)
+			{
+				free_pages* next = heap->free_page_list->next;
+				if(next != NULL) {
+					next->prev = NULL;
+				}
+				heap->free_page_list = next;
+			}
+			else
+			{
+				if(pages->prev != NULL) { pages->prev = pages->next; }
+				if(pages->next != NULL) { pages->next = pages->prev; }
+			}
+		}
 	}
 
-	pthread_mutex_unlock(&global_heap_lock);
-	return block;
+	// no page could be recycled - allocate a new one
+	if(page == NULL)
+	{
+		pthread_mutex_lock(&global_heap_lock);
+
+		superblock* block = (superblock*) mem_sbrk(num_pages * mem_pagesize());
+		if(block != NULL)
+		{
+			block->size = sizeof(superblock);
+			block->next = NULL;
+
+			page = block;
+		}
+
+		pthread_mutex_unlock(&global_heap_lock);
+	}
+
+	return page;
 }
 
 void* alloc_small_block(size_t sz)
@@ -121,11 +183,11 @@ void* alloc_small_block(size_t sz)
 		// allocate a new superblock and insert it into this heap
 		if(block == NULL)
 		{
-			block = alloc_superblock(PAGES_IN_SUPERBLOCK);
+			block = alloc_pages(heap, PAGES_IN_SUPERBLOCK);
 			tail->next = block;
 		}
 
-		mem = (void*) block + block->size;
+		mem = (unsigned char*) block + block->size;
 		block->size += size;
 	}
 
@@ -153,7 +215,7 @@ void* alloc_large_block(size_t sz)
 
 	unsigned long long size_aligned_to_qwords = align(sz, 8);
 	unsigned long long num_pages = align(size_aligned_to_qwords, page_size) / page_size;
-	superblock* block = alloc_superblock(num_pages);
+	superblock* block = alloc_pages(heap, num_pages);
 	mem = block;
 
 	if(heap->allocations == NULL)
@@ -179,6 +241,40 @@ void* alloc_large_block(size_t sz)
 	return mem;
 }
 
+int free_small_block(subpage_allocation* ptr)
+{
+	processor_heap* heap = processor_heaps[getTID()];
+	pthread_mutex_lock(&heap->lock);
+
+	superblock* owner = ptr->owner;
+	unsigned int size_class = calculate_size_class(ptr->size_in_bytes);
+
+	free_block* block = (free_block* ptr);
+	block->owner = owner;
+	block->next = heap->free_blocks[size_class];
+	heap->free_blocks[size_class] = block;
+	
+	pthread_mutex_unlock(&heap->lock);
+	return 0;
+}
+
+int free_large_block(large_allocation* ptr)
+{
+	processor_heap* heap = processor_heaps[getTID()];
+	pthread_mutex_lock(&heap->lock);
+
+	superblock* owner = ptr->owner;
+	unsigned int num_pages = ptr->size_in_pages;
+
+	free_pages* pages = (free_pages*) ptr;
+	pages->num_pages = num_pages;
+	pages->next = heap->free_pages;
+	heap->free_blocks = pages = next;
+
+	pthread_mutex_unlock(&heap->lock);
+	return 0;
+}
+
 void *mm_malloc(size_t sz)
 {
 	void* mem = NULL;
@@ -198,7 +294,16 @@ void *mm_malloc(size_t sz)
 
 void mm_free(void *ptr)
 {
-	(void)ptr; /* Avoid warning about unused variable */
+	allocation_header* mem = (unsigned char*) ptr - sizeof(allocation_header);
+
+	if(size > MAX_BLOCK_SIZE)
+	{
+		free_small_block(mem);
+	}
+	else
+	{
+		free_large_block(mem);
+	}
 }
 
 int mm_init(void)
