@@ -137,15 +137,20 @@ void* alloc_small_block(size_t sz)
 	return mem;
 }
 
+unsigned long long align(unsigned long long value, unsigned long long alignment)
+{
+	unsigned long long mask = alignment - 1;
+	return (value + mask) & ~mask;
+}
+
 void* alloc_large_block(size_t sz)
 {
 	void* mem = NULL;
 	processor_heap* heap = processor_heaps[getTID()];
 	pthread_mutex_lock(&heap->lock);
 
-	unsigned long long page_size = mem_pagesize();
-	unsigned long long mask = page_size - 1;
-	unsigned long long num_pages = ((sz + mask) & ~mask) / page_size;
+	unsigned long long size_aligned_to_qwords = align(sz, 8);
+	unsigned long long num_pages = align(size_aligned_to_qwords, page_size) / page_size;
 	superblock* block = alloc_superblock(num_pages);
 
 	if(heap->allocations == NULL)
