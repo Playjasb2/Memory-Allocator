@@ -8,8 +8,8 @@
 
 #define PAGES_IN_SUPERBLOCK 2
 
-#define NUM_BLOCK_SIZES 10
-const int BLOCK_SIZES[NUM_BLOCK_SIZES] = { 16, 32, 64, 128, 256, 512, 1024, 2048, 4096, 6144 };
+#define NUM_BLOCK_SIZES 9
+const int BLOCK_SIZES[NUM_BLOCK_SIZES] = { 16, 32, 64, 128, 256, 512, 1024, 2048, 4096 };
 #define MAX_BLOCK_SIZE (BLOCK_SIZES[NUM_BLOCK_SIZES - 1])
 
 typedef ptrdiff_t vaddr_t;
