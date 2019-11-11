@@ -8,8 +8,8 @@
 
 #define PAGES_IN_SUPERBLOCK 2
 
-#define NUM_BLOCK_SIZES 9
-const int BLOCK_SIZES[NUM_BLOCK_SIZES] = { 16, 32, 64, 128, 256, 512, 1024, 2048, 4096 };
+#define NUM_BLOCK_SIZES 8
+const int BLOCK_SIZES[NUM_BLOCK_SIZES] = { 32, 64, 128, 256, 512, 1024, 2048, 4096 };
 #define MAX_BLOCK_SIZE (BLOCK_SIZES[NUM_BLOCK_SIZES - 1])
 
 typedef ptrdiff_t vaddr_t;
@@ -32,7 +32,6 @@ struct superblock_t
 
 struct free_block_t
 {
-	superblock* owner;
 	free_block* prev;
 	free_block* next;
 };
@@ -54,12 +53,14 @@ struct processor_heap_t
 	free_pages* free_page_list;
 };
 
+// structure at the beginning of every subpage allocation (size = 16 bytes)
 struct subpage_allocation_t
 {
 	superblock* owner;
 	unsigned long long size_in_bytes;
 };
 
+// structure at the beginning of every large allocation (size = 16 bytes)
 struct large_allocation_t
 {
 	large_allocation* next;
@@ -68,7 +69,6 @@ struct large_allocation_t
 
 void* page_zero; // page dedicated for heap data
 
-unsigned int num_processors;
 unsigned int superblock_size;
 
 pthread_mutex_t global_heap_lock = PTHREAD_MUTEX_INITIALIZER;
@@ -77,7 +77,7 @@ processor_heap *processor_heaps;
 
 void initialize()
 {
-	num_processors = getNumProcessors();
+	unsigned int num_processors = getNumProcessors();
 	superblock_size = PAGES_IN_SUPERBLOCK * mem_pagesize();
 
 	page_zero = mem_sbrk(mem_pagesize());
@@ -106,9 +106,6 @@ unsigned int calculate_size_class(size_t sz)
 
 void insert_free_entry(unsigned int size_class, free_block* block, superblock* super_block)
 {
-	block->next = super_block->free_block_list[size_class];
-	super_block->free_block_list[size_class] = block;
-
 	if(super_block->free_block_list[size_class] == NULL)
 	{
 		super_block->free_block_list[size_class] = block;
@@ -136,17 +133,32 @@ void insert_free_entry(unsigned int size_class, free_block* block, superblock* s
 
 				if(size_class < NUM_BLOCK_SIZES - 1)
 				{
-					if((void*) block - (void*) block->prev == BLOCK_SIZES[size_class])
+					unsigned long long prev_diff = (block->prev == NULL) ? 0 : (unsigned char*) block - (unsigned char*) block->prev;
+					unsigned long long next_diff = (block->next == NULL) ? 0 : (unsigned char*) block->next - (unsigned char*) block;
+
+					if(prev_diff == BLOCK_SIZES[size_class])
 					{
+						// remove the blocks from the link
 						if(block->prev->prev != NULL) { block->prev->prev->next = block->next; }
 						if(block->next != NULL) { block->next->prev = block->prev->prev; }
+
+						// if the root of the linked list points to the previous block, point it to the next block
+						if(block->prev == super_block->free_block_list[size_class]) {
+							super_block->free_block_list[size_class] = block->next;
+						}
 						
 						insert_free_entry(size_class + 1, block->prev, super_block);
 					}
-					else if((void*) block->next - (void*) block == BLOCK_SIZES[size_class])
+					else if(next_diff == BLOCK_SIZES[size_class])
 					{
+						// remove the blocks from the link
 						if(block->prev != NULL) { block->prev->next = block->next->next; }
 						if(block->next->next != NULL) { block->next->next->prev = block->prev; }
+
+						// if the root of the linked list points to the current block, point it to the next block
+						if(block == super_block->free_block_list[size_class]) {
+							super_block->free_block_list[size_class] = block->next->next;
+						}
 
 						insert_free_entry(size_class + 1, block, super_block);
 					}
@@ -212,7 +224,7 @@ void* alloc_pages(processor_heap* heap, unsigned int num_pages)
 		superblock* block = (superblock*) mem_sbrk(num_pages * mem_pagesize());
 		if(block != NULL)
 		{
-			block->size_in_bytes = sizeof(superblock);
+			block->size_in_bytes = BLOCK_SIZES[calculate_size_class(sizeof(superblock))];
 			block->next = NULL;
 
 			page = block;
@@ -251,13 +263,12 @@ void* alloc_small_block(size_t sz)
 					for(unsigned int j = i; j > size_class; j--)
 					{
 						free_block* second = (free_block*) ((unsigned char*) block + (BLOCK_SIZES[j] / 2));
-						second->owner = block->owner;
 						insert_free_entry(size_class, second, super_block);
 					}
 				}
 
 				mem = block;
-				owner = block->owner;
+				owner = super_block;
 				break;
 			}
 		}
@@ -348,7 +359,6 @@ int free_small_block(subpage_allocation* ptr)
 	unsigned int size_class = calculate_size_class(ptr->size_in_bytes);
 
 	free_block* block = (free_block*) ptr;
-	block->owner = owner;
 
 	insert_free_entry(size_class, block, owner);
 	
