@@ -26,12 +26,14 @@ struct superblock_t
 {
 	processor_heap* owner;
 	unsigned int size_in_bytes;
+	free_block* free_block_list[NUM_BLOCK_SIZES];
 	superblock* next;
 };
 
 struct free_block_t
 {
 	superblock* owner;
+	free_block* prev;
 	free_block* next;
 };
 
@@ -50,7 +52,6 @@ struct processor_heap_t
 	large_allocation* large_allocations;
 	
 	free_pages* free_page_list;
-	free_block* free_block_list[NUM_BLOCK_SIZES];
 };
 
 struct subpage_allocation_t
@@ -101,6 +102,68 @@ unsigned int calculate_size_class(size_t sz)
 		}
 	}
 	return size_class;
+}
+
+void insert_free_entry(unsigned int size_class, free_block* block, superblock* super_block)
+{
+	block->next = super_block->free_block_list[size_class];
+	super_block->free_block_list[size_class] = block;
+
+	if(super_block->free_block_list[size_class] == NULL)
+	{
+		super_block->free_block_list[size_class] = block;
+	}
+	else
+	{
+		free_block* it = super_block->free_block_list[size_class];
+		while(1)
+		{
+			if(block < it)
+			{
+				// link the new block to the previous node
+				if(it->prev != NULL) { it->prev->next = block; }
+				block->prev = it->prev;
+
+				// link the new block to the current node
+				it->prev = block;
+				block->next = it;
+
+				// if the iterator was the first entry, then we need to overwrite it with the new block
+				if(it == super_block->free_block_list[size_class])
+				{
+					super_block->free_block_list[size_class] = block;
+				}
+
+				if(size_class < NUM_BLOCK_SIZES - 1)
+				{
+					if((void*) block - (void*) block->prev == BLOCK_SIZES[size_class])
+					{
+						if(block->prev->prev != NULL) { block->prev->prev->next = block->next; }
+						if(block->next != NULL) { block->next->prev = block->prev->prev; }
+						
+						insert_free_entry(size_class + 1, block->prev, super_block);
+					}
+					else if((void*) block->next - (void*) block == BLOCK_SIZES[size_class])
+					{
+						if(block->prev != NULL) { block->prev->next = block->next->next; }
+						if(block->next->next != NULL) { block->next->next->prev = block->prev; }
+
+						insert_free_entry(size_class + 1, block, super_block);
+					}
+				}
+
+				break;
+			}
+
+			it = it->next;
+		}
+	}
+}
+
+unsigned long long align(unsigned long long value, unsigned long long alignment)
+{
+	unsigned long long mask = alignment - 1;
+	return (value + mask) & ~mask;
 }
 
 void* alloc_pages(processor_heap* heap, unsigned int num_pages)
@@ -173,13 +236,31 @@ void* alloc_small_block(size_t sz)
 	unsigned int size = BLOCK_SIZES[size_class];
 
 	// check if there are any blocks of the size class which are available for reuse
-	if(heap->free_block_list[size_class] != NULL)
+	for(superblock* super_block = heap->subpage_allocations; super_block != NULL; super_block = super_block->next)
 	{
-		free_block* block = heap->free_block_list[size_class];
-		heap->free_block_list[size_class] = heap->free_block_list[size_class]->next;
+		for(unsigned int i = size_class; i < NUM_BLOCK_SIZES; i++)
+		{
+			if(super_block->free_block_list[i] != NULL)
+			{
+				free_block* block = super_block->free_block_list[i];
+				super_block->free_block_list[i] = super_block->free_block_list[i]->next;
 
-		mem = block;
-		owner = block->owner;
+				if(i != size_class)
+				{
+					// decompose the large block into smaller blocks
+					for(unsigned int j = i; j > size_class; j--)
+					{
+						free_block* second = (free_block*) ((unsigned char*) block + (BLOCK_SIZES[j] / 2));
+						second->owner = block->owner;
+						insert_free_entry(size_class, second, super_block);
+					}
+				}
+
+				mem = block;
+				owner = block->owner;
+				break;
+			}
+		}
 	}
 
 	if(mem == NULL)
@@ -216,12 +297,6 @@ void* alloc_small_block(size_t sz)
 
 	pthread_mutex_unlock(&heap->lock);
 	return mem;
-}
-
-unsigned long long align(unsigned long long value, unsigned long long alignment)
-{
-	unsigned long long mask = alignment - 1;
-	return (value + mask) & ~mask;
 }
 
 void* alloc_large_block(size_t sz)
@@ -274,8 +349,8 @@ int free_small_block(subpage_allocation* ptr)
 
 	free_block* block = (free_block*) ptr;
 	block->owner = owner;
-	block->next = heap->free_block_list[size_class];
-	heap->free_block_list[size_class] = block;
+
+	insert_free_entry(size_class, block, owner);
 	
 	pthread_mutex_unlock(&heap->lock);
 	return 0;
@@ -302,7 +377,7 @@ void *mm_malloc(size_t sz)
 	void* mem = NULL;
 	size_t size = sz + sizeof(subpage_allocation);
 
-	if(size > MAX_BLOCK_SIZE)
+	if(size <= MAX_BLOCK_SIZE)
 	{
 		mem = alloc_small_block(size);
 	}
@@ -318,13 +393,13 @@ void mm_free(void *ptr)
 {
 	unsigned long long size = *((unsigned long long*) ptr - 1);
 
-	if(size > MAX_BLOCK_SIZE)
+	if(size <= MAX_BLOCK_SIZE)
 	{
-		free_small_block(ptr);
+		free_small_block((subpage_allocation*) ((unsigned char*) ptr - sizeof(subpage_allocation)));
 	}
 	else
 	{
-		free_large_block(ptr);
+		free_large_block((large_allocation*) ((unsigned char*) ptr - sizeof(large_allocation)));
 	}
 }
 
@@ -346,4 +421,3 @@ int mm_init(void)
 
 	return 0;
 }
-
