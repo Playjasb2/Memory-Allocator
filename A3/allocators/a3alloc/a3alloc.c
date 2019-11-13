@@ -1,4 +1,5 @@
 
+#include <assert.h>
 #include <stdlib.h>
 
 #include <pthread.h>
@@ -7,7 +8,7 @@
 #include "mm_thread.h"
 #include "timer.h"
 
-//#define debug_print(frmt, ...) { printf(frmt, ##__VA_ARGS__); }
+// #define debug_print(frmt, ...) { printf(frmt, ##__VA_ARGS__); }
 #define debug_print(frmt, ...)
 
 #define PAGES_IN_SUPERBLOCK 2
@@ -26,7 +27,7 @@ typedef struct processor_heap_t processor_heap;
 typedef struct subpage_allocation_t subpage_allocation;
 typedef struct large_allocation_t large_allocation;
 
-struct superblock_t
+struct superblock_t // size will be rounded to nearest block size during initialization
 {
 	processor_heap* owner;
 	unsigned int size_in_bytes;
@@ -34,15 +35,15 @@ struct superblock_t
 	superblock* next;
 };
 
-struct free_block_t
+struct free_block_t // size = 16 bytes
 {
 	free_block* prev;
 	free_block* next;
 };
 
-struct free_pages_t
+struct free_pages_t // size = 24 bytes
 {
-	unsigned int num_pages;
+	unsigned long long num_pages;
 	free_pages* prev;
 	free_pages* next;
 };
@@ -52,7 +53,7 @@ struct processor_heap_t
 	pthread_mutex_t lock;
 
 	superblock* subpage_allocations;
-	large_allocation* large_allocations;
+	// large_allocation* large_allocations;
 	
 	free_pages* free_page_list;
 };
@@ -67,7 +68,7 @@ struct subpage_allocation_t
 // structure at the beginning of every large allocation (size = 16 bytes)
 struct large_allocation_t
 {
-	large_allocation* next;
+	processor_heap* owner;
 	unsigned long long size_in_bytes;
 };
 
@@ -128,12 +129,7 @@ void insert_free_entry(unsigned int size_class, free_block* block, superblock* s
 		{
 			if((block < it) || (it->next == NULL))
 			{
-				if(it->next == NULL)
-				{
-					it->next = block;
-					block->prev = it;
-				}
-				else
+				if(block < it)
 				{
 					// link the new block to the previous node
 					if(it->prev != NULL) { it->prev->next = block; }
@@ -148,6 +144,11 @@ void insert_free_entry(unsigned int size_class, free_block* block, superblock* s
 					{
 						super_block->free_block_list[size_class] = block;
 					}
+				}
+				else
+				{
+					it->next = block;
+					block->prev = it;
 				}
 
 				/*
@@ -205,11 +206,11 @@ free_block* get_free_entry(superblock* super_block, unsigned int size_class)
 {
 	debug_print("enter get free entry\n");
 	free_block* block = super_block->free_block_list[size_class];
-
 	free_block* next = block->next;
-	if(next != NULL) { next->prev = NULL; }
 
+	if(next != NULL) { next->prev = NULL; }
 	super_block->free_block_list[size_class] = next;
+
 	block->next = NULL;
 	block->prev = NULL;
 
@@ -306,6 +307,7 @@ void* alloc_small_block(size_t sz)
 				if(i != size_class)
 				{
 					// decompose the large block into smaller blocks
+					/*
 					for(unsigned int j = i; j > size_class; j--)
 					{
 						free_block* second = (free_block*) ((unsigned char*) block + (BLOCK_SIZES[j] / 2));
@@ -313,6 +315,8 @@ void* alloc_small_block(size_t sz)
 						second->prev = NULL;
 						insert_free_entry(size_class, second, super_block);
 					}
+					*/
+					size = BLOCK_SIZES[i];
 				}
 
 				mem = block;
@@ -346,7 +350,7 @@ void* alloc_small_block(size_t sz)
 				memset(block, 0, sizeof(superblock));
 
 				block->owner = heap;
-				block->size_in_bytes = sizeof(superblock);
+				block->size_in_bytes = BLOCK_SIZES[calculate_size_class(sizeof(superblock))]; // offset the size of the header
 			}
 
 			if(tail == NULL) {
@@ -390,10 +394,11 @@ void* alloc_large_block(size_t sz)
 	
 	large_allocation* allocation = alloc_pages(heap, num_pages);
 	allocation->size_in_bytes = size_aligned_to_pages;
-	allocation->next = NULL;
+	allocation->owner = heap;
 
 	mem = allocation;
 
+	/*
 	if(heap->large_allocations == NULL)
 	{
 		heap->large_allocations = allocation;
@@ -412,6 +417,7 @@ void* alloc_large_block(size_t sz)
 			it = it->next;
 		}
 	}
+	*/
 	
 	debug_print("%i lock %p\n", getTID(), &heap->lock);
 	pthread_mutex_unlock(&heap->lock);
@@ -422,7 +428,8 @@ void* alloc_large_block(size_t sz)
 int free_small_block(subpage_allocation* ptr)
 {
 	debug_print("enter free_small_block\n");
-	processor_heap* heap = &processor_heaps[getTID() % num_processors];
+	processor_heap* heap = ptr->owner->owner;
+
 	debug_print("%i lock %p\n", getTID(), &heap->lock);
 	pthread_mutex_lock(&heap->lock);
 
@@ -444,7 +451,7 @@ int free_small_block(subpage_allocation* ptr)
 int free_large_block(large_allocation* ptr)
 {
 	debug_print("enter free_large_block\n");
-	processor_heap* heap = &processor_heaps[getTID() % num_processors];
+	processor_heap* heap = ptr->owner;
 
 	debug_print("%i lock %p\n", getTID(), &heap->lock);
 	pthread_mutex_lock(&heap->lock);
