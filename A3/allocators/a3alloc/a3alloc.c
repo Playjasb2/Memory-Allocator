@@ -100,8 +100,6 @@ void initialize()
 
 unsigned int calculate_size_class(size_t sz)
 {
-	debug_print("calculate_size_class\n");
-
 	unsigned int size_class = 0;
 	for(unsigned int i = 0; i < NUM_BLOCK_SIZES; i++)
 	{
@@ -116,8 +114,6 @@ unsigned int calculate_size_class(size_t sz)
 
 void insert_free_entry(unsigned int size_class, free_block* block, superblock* super_block)
 {
-	debug_print("enter insert_free_entry\n");
-
 	if(super_block->free_block_list[size_class] == NULL)
 	{
 		super_block->free_block_list[size_class] = block;
@@ -173,7 +169,7 @@ void insert_free_entry(unsigned int size_class, free_block* block, superblock* s
 						block->prev->prev = NULL;
 						block->prev->next = NULL;
 
-						printf("Combining block of size %lli with block of size %i\n", prev_diff, BLOCK_SIZES[size_class]);
+						debug_print("Combining block of size %lli with block of size %i\n", prev_diff, BLOCK_SIZES[size_class]);
 						insert_free_entry(size_class + 1, block->prev, super_block);
 					}
 					else if(next_diff == BLOCK_SIZES[size_class])
@@ -193,7 +189,7 @@ void insert_free_entry(unsigned int size_class, free_block* block, superblock* s
 						block->prev = NULL;
 						block->next = NULL;
 
-						printf("Combining block of size %lli with block of size %i\n", next_diff, BLOCK_SIZES[size_class]);
+						debug_print("Combining block of size %lli with block of size %i\n", next_diff, BLOCK_SIZES[size_class]);
 						insert_free_entry(size_class + 1, block, super_block);
 					}
 				}
@@ -204,13 +200,10 @@ void insert_free_entry(unsigned int size_class, free_block* block, superblock* s
 			it = it->next;
 		}
 	}
-
-	debug_print("leave insert_free_entry\n");
 }
 
 free_block* get_free_entry(superblock* super_block, unsigned int size_class)
 {
-	debug_print("enter get free entry\n");
 	free_block* block = super_block->free_block_list[size_class];
 	free_block* next = block->next;
 
@@ -219,23 +212,17 @@ free_block* get_free_entry(superblock* super_block, unsigned int size_class)
 
 	block->next = NULL;
 	block->prev = NULL;
-
-	debug_print("leave get free entry\n");
 	return block;
 }
 
 unsigned long long align(unsigned long long value, unsigned long long alignment)
 {
-	debug_print("align\n");
-
 	unsigned long long mask = alignment - 1;
 	return (value + mask) & ~mask;
 }
 
 void* alloc_pages(processor_heap* heap, unsigned int num_pages)
 {
-	debug_print("enter alloc_pages\n");
-	
 	void* page = NULL;
 
 	// try to find a page available for reuse
@@ -275,30 +262,23 @@ void* alloc_pages(processor_heap* heap, unsigned int num_pages)
 	// no page could be recycled - allocate a new one
 	if(page == NULL)
 	{
-		debug_print("%i lock %p\n", getTID(), &global_heap_lock);
 		pthread_mutex_lock(&global_heap_lock);
 		page = mem_sbrk(num_pages * mem_pagesize());
-		debug_print("%i unlock %p\n", getTID(), &global_heap_lock);
 		pthread_mutex_unlock(&global_heap_lock);
 	}
 
-	debug_print("leave alloc_pages\n");
 	return page;
 }
 
 void* alloc_small_block(size_t sz)
 {
-	debug_print("enter alloc_small_block\n");
-
 	void* mem = NULL;
 	superblock* owner = NULL;
 	
 	processor_heap* heap = &processor_heaps[getTID() % num_processors];
-	debug_print("%i lock %p\n", getTID(), &heap->lock);
 	pthread_mutex_lock(&heap->lock);
 
 	unsigned int size_class = calculate_size_class(sz);
-	debug_print("size class = %u\n", size_class);
 	unsigned int size = BLOCK_SIZES[size_class];
 
 	// check if there are any blocks of the size class which are available for reuse
@@ -312,7 +292,7 @@ void* alloc_small_block(size_t sz)
 
 				if(i != size_class)
 				{
-					printf("Reducing block at %p of size [%i] to [%i]\n", block, BLOCK_SIZES[i], BLOCK_SIZES[size_class]);
+					debug_print("Reducing block at %p of size [%i] to [%i]\n", block, BLOCK_SIZES[i], BLOCK_SIZES[size_class]);
 					// decompose the large block into smaller blocks
 					for(unsigned int j = i; j > size_class; j--)
 					{
@@ -321,7 +301,7 @@ void* alloc_small_block(size_t sz)
 						second->prev = NULL;
 						insert_free_entry(size_class, second, super_block);
 
-						printf("\tCreate new entry at offset %li\n", (unsigned char*) second - (unsigned char*) block);
+						debug_print("\tCreate new entry at offset %li\n", (unsigned char*) second - (unsigned char*) block);
 					}
 				}
 
@@ -378,19 +358,15 @@ void* alloc_small_block(size_t sz)
 		header->size_in_bytes = size;
 	}
 
-	debug_print("%i unlock %p\n", getTID(), &heap->lock);
 	pthread_mutex_unlock(&heap->lock);
-	debug_print("leave alloc_small_block\n");
 	return mem;
 }
 
 void* alloc_large_block(size_t sz)
 {
-	debug_print("enter alloc_large_block\n");
 	void* mem = NULL;
 	processor_heap* heap = &processor_heaps[getTID() % num_processors];
 
-	debug_print("%i lock %p\n", getTID(), &heap->lock);
 	pthread_mutex_lock(&heap->lock);
 
 	unsigned long long page_size = mem_pagesize();
@@ -425,18 +401,14 @@ void* alloc_large_block(size_t sz)
 	}
 	*/
 	
-	debug_print("%i lock %p\n", getTID(), &heap->lock);
 	pthread_mutex_unlock(&heap->lock);
-	debug_print("leave alloc_large_block\n");
 	return mem;
 }
 
 int free_small_block(subpage_allocation* ptr)
 {
-	debug_print("enter free_small_block\n");
 	processor_heap* heap = ptr->owner->owner;
 
-	debug_print("%i lock %p\n", getTID(), &heap->lock);
 	pthread_mutex_lock(&heap->lock);
 
 	superblock* owner = ptr->owner;
@@ -448,18 +420,14 @@ int free_small_block(subpage_allocation* ptr)
 
 	insert_free_entry(size_class, block, owner);
 	
-	debug_print("%i lock %p\n", getTID(), &heap->lock);
 	pthread_mutex_unlock(&heap->lock);
-	debug_print("leave free_small_block\n");
 	return 0;
 }
 
 int free_large_block(large_allocation* ptr)
 {
-	debug_print("enter free_large_block\n");
 	processor_heap* heap = ptr->owner;
 
-	debug_print("%i lock %p\n", getTID(), &heap->lock);
 	pthread_mutex_lock(&heap->lock);
 
 	unsigned int num_pages = ptr->size_in_bytes / mem_pagesize();
@@ -469,18 +437,12 @@ int free_large_block(large_allocation* ptr)
 	pages->next = heap->free_page_list;
 	heap->free_page_list = pages;
 
-	debug_print("%i lock %p\n", getTID(), &heap->lock);
 	pthread_mutex_unlock(&heap->lock);
-	debug_print("leave free_large_block\n");
 	return 0;
 }
 
 void *mm_malloc(size_t sz)
 {
-	struct timespec start, end;
-	clock_gettime(CLOCK_MONOTONIC, &start);
-
-	debug_print("enter mm_alloc\n");
 	void* mem = NULL;
 	size_t size = sz + sizeof(subpage_allocation);
 
@@ -493,19 +455,12 @@ void *mm_malloc(size_t sz)
 		mem = alloc_large_block(size);
 	}
 
-	clock_gettime(CLOCK_MONOTONIC, &end);
-	debug_print("leave mm_alloc - %f\n", timespec_diff(&start, &end));
 	return (unsigned char*) mem + sizeof(subpage_allocation);
 }
 
 void mm_free(void *ptr)
 {
-	struct timespec start, end;
-	clock_gettime(CLOCK_MONOTONIC, &start);
-
-	debug_print("enter mm_free(%p)\n", ptr);
 	unsigned long long size = *((unsigned long long*) ptr - 1);
-	debug_print("\tsize = %llu\n", size);
 
 	if(size <= MAX_BLOCK_SIZE)
 	{
@@ -515,14 +470,10 @@ void mm_free(void *ptr)
 	{
 		free_large_block((large_allocation*) ((unsigned char*) ptr - sizeof(large_allocation)));
 	}
-
-	clock_gettime(CLOCK_MONOTONIC, &end);
-	debug_print("leave mm_free - %f\n", timespec_diff(&start, &end));
 }
 
 int mm_init(void)
 {
-	debug_print("mm_init\n");
 	if(dseg_lo == NULL && dseg_hi == NULL)
 	{
 		pthread_mutex_lock(&global_heap_lock);
