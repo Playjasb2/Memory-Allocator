@@ -151,7 +151,6 @@ void insert_free_entry(unsigned int size_class, free_block* block, superblock* s
 					block->prev = it;
 				}
 
-				/*
 				if(size_class < NUM_BLOCK_SIZES - 1)
 				{
 					unsigned long long prev_diff = (block->prev == NULL) ? 0 : (unsigned char*) block - (unsigned char*) block->prev;
@@ -171,6 +170,10 @@ void insert_free_entry(unsigned int size_class, free_block* block, superblock* s
 							super_block->free_block_list[size_class] = next;
 						}
 						
+						block->prev->prev = NULL;
+						block->prev->next = NULL;
+
+						printf("Combining block of size %lli with block of size %i\n", prev_diff, BLOCK_SIZES[size_class]);
 						insert_free_entry(size_class + 1, block->prev, super_block);
 					}
 					else if(next_diff == BLOCK_SIZES[size_class])
@@ -187,10 +190,13 @@ void insert_free_entry(unsigned int size_class, free_block* block, superblock* s
 							super_block->free_block_list[size_class] = next;
 						}
 
+						block->prev = NULL;
+						block->next = NULL;
+
+						printf("Combining block of size %lli with block of size %i\n", next_diff, BLOCK_SIZES[size_class]);
 						insert_free_entry(size_class + 1, block, super_block);
 					}
 				}
-				*/
 
 				break;
 			}
@@ -306,17 +312,17 @@ void* alloc_small_block(size_t sz)
 
 				if(i != size_class)
 				{
+					printf("Reducing block at %p of size [%i] to [%i]\n", block, BLOCK_SIZES[i], BLOCK_SIZES[size_class]);
 					// decompose the large block into smaller blocks
-					/*
 					for(unsigned int j = i; j > size_class; j--)
 					{
 						free_block* second = (free_block*) ((unsigned char*) block + (BLOCK_SIZES[j] / 2));
 						second->next = NULL;
 						second->prev = NULL;
 						insert_free_entry(size_class, second, super_block);
+
+						printf("\tCreate new entry at offset %li\n", (unsigned char*) second - (unsigned char*) block);
 					}
-					*/
-					size = BLOCK_SIZES[i];
 				}
 
 				mem = block;
