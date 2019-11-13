@@ -230,6 +230,7 @@ void* alloc_pages(processor_heap* heap, unsigned int num_pages)
 	{
 		if(pages->num_pages > num_pages) // take some of the pages in a free page list
 		{
+			// printf("take some pages!\n");
 			page = pages;
 			pages->num_pages -= num_pages;
 
@@ -241,6 +242,7 @@ void* alloc_pages(processor_heap* heap, unsigned int num_pages)
 		}
 		else if(pages->num_pages == num_pages) // take all of the pages in a free page list
 		{
+			// printf("take all pages!\n");
 			page = pages;
 
 			if(pages == heap->free_page_list) // remove the free page list from the head of the list

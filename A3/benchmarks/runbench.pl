@@ -34,8 +34,7 @@ if (!-e "$dir/Results") {
 # uncomment the line corresponding to the allocators you want to run.
 #my @alloclist = ("a3alloc");
 #my @alloclist = ("libc", "kheap");
-# my @alloclist = ("libc", "kheap", "a3alloc");
-my @alloclist = ("a3alloc");
+my @alloclist = ("libc", "kheap", "a3alloc");
 my $allocator;
 
 #Initialize from config file
