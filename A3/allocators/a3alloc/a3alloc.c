@@ -154,6 +154,7 @@ void insert_free_entry(unsigned int size_class, free_block* block, superblock* s
 					block->prev = it;
 				}
 
+				// check if the block can be merged with an adjacent block (only blocks < 4096 bytes can be merged)
 				if(size_class < NUM_BLOCK_SIZES - 1)
 				{
 					unsigned long long prev_diff = (block->prev == NULL) ? 0 : (unsigned char*) block - (unsigned char*) block->prev;
@@ -209,6 +210,7 @@ void insert_free_entry(unsigned int size_class, free_block* block, superblock* s
 	}
 }
 
+// removes and returns the first entry from the size_class linked list in a given super_block
 free_block* get_free_entry(superblock* super_block, unsigned int size_class)
 {
 	free_block* block = super_block->free_block_list[size_class];
@@ -266,6 +268,11 @@ void* alloc_pages(processor_heap* heap, unsigned int num_pages)
 				if(pages->next != NULL) { pages->next->prev = pages->prev; }
 			}
 		}
+
+		if(page != NULL)
+		{
+			break;
+		}
 	}
 
 	// no page could be recycled - allocate a new one
@@ -293,13 +300,14 @@ void* alloc_small_block(size_t sz)
 	// check if there are any blocks of the size class which are available for reuse
 	for(superblock* super_block = heap->subpage_allocations; super_block != NULL; super_block = super_block->next)
 	{
+		// check all the block sizes >= the required block size
 		for(unsigned int i = size_class; i < NUM_BLOCK_SIZES; i++)
 		{
 			if(super_block->free_block_list[i] != NULL)
 			{
-				free_block* block = get_free_entry(super_block, i);
+				free_block* block = get_free_entry(super_block, i); // take the block
 
-				if(i != size_class)
+				if(i != size_class) // decompose the block if it is larger than the required size
 				{
 					debug_print("Reducing block at %p of size [%i] to [%i]\n", block, BLOCK_SIZES[i], BLOCK_SIZES[size_class]);
 					// decompose the large block into smaller blocks
@@ -360,6 +368,7 @@ void* alloc_small_block(size_t sz)
 		block->size_in_bytes += size;
 	}
 
+	// initialize the allocation header
 	if(mem != NULL)
 	{
 		subpage_allocation* header = (subpage_allocation*) mem;
@@ -388,27 +397,6 @@ void* alloc_large_block(size_t sz)
 	allocation->owner = heap;
 
 	mem = allocation;
-
-	/*
-	if(heap->large_allocations == NULL)
-	{
-		heap->large_allocations = allocation;
-	}
-	else
-	{
-		large_allocation* it = heap->large_allocations;
-		while(1)
-		{
-			if(it->next == NULL)
-			{
-				it->next = allocation;
-				break;
-			}
-
-			it = it->next;
-		}
-	}
-	*/
 	
 	pthread_mutex_unlock(&heap->lock);
 	return mem;
