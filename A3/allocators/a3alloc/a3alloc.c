@@ -1,8 +1,10 @@
 
+#define _GNU_SOURCE
+
 #include <assert.h>
 #include <stdlib.h>
 
-#include <pthread.h>
+#include <sched.h>
 
 #include "memlib.h"
 #include "mm_thread.h"
@@ -96,6 +98,11 @@ void initialize()
 		memset(&processor_heaps[i], 0, sizeof(processor_heap));
 		pthread_mutex_init(&processor_heaps[i].lock, NULL);
 	}
+}
+
+processor_heap* get_processor_heap()
+{
+	return &processor_heaps[sched_getcpu() % num_processors];
 }
 
 unsigned int calculate_size_class(size_t sz)
@@ -277,7 +284,7 @@ void* alloc_small_block(size_t sz)
 	void* mem = NULL;
 	superblock* owner = NULL;
 	
-	processor_heap* heap = &processor_heaps[getTID() % num_processors];
+	processor_heap* heap = get_processor_heap();
 	pthread_mutex_lock(&heap->lock);
 
 	unsigned int size_class = calculate_size_class(sz);
@@ -367,7 +374,7 @@ void* alloc_small_block(size_t sz)
 void* alloc_large_block(size_t sz)
 {
 	void* mem = NULL;
-	processor_heap* heap = &processor_heaps[getTID() % num_processors];
+	processor_heap* heap = get_processor_heap();
 
 	pthread_mutex_lock(&heap->lock);
 
